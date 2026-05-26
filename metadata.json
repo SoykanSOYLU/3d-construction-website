@@ -1,0 +1,6 @@
+{
+  "name": "nakyoS",
+  "description": "A sleek, minimalist, cinematic hero section with glassmorphic navigation and refined typography.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
