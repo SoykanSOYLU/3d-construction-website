@@ -39,37 +39,66 @@ export default function App() {
 
   // Preload Images
   useEffect(() => {
-    let loadedCount = 0;
-    const images: HTMLImageElement[] = [];
+    const isMobileDevice = window.innerWidth < 768;
+    const folder = isMobileDevice ? "mobile" : "desktop";
+    
+    // Allocate space for all frames so we can assign them by index
+    const loadedImages: HTMLImageElement[] = new Array(TOTAL_FRAMES).fill(null);
+    const INITIAL_BATCH_SIZE = 12;
+    let initialLoadedCount = 0;
 
-    const handleImageLoad = () => {
-      loadedCount++;
-      const progress = Math.round((loadedCount / TOTAL_FRAMES) * 100);
-      setLoadingProgress(progress);
-      if (loadedCount === TOTAL_FRAMES) {
-        imagesRef.current = images;
-        setIsLoaded(true);
+    const loadFrame = (index: number): Promise<HTMLImageElement> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = `/frames/${folder}/frame_${pad(index + 1, 4)}.jpg`;
+        img.onload = () => {
+          loadedImages[index] = img;
+          resolve(img);
+        };
+        img.onerror = () => {
+          // Resolve anyway so we don't get stuck on network failures
+          resolve(img);
+        };
+      });
+    };
+
+    // Load initial 12 frames to show the Hero screen instantly
+    const loadInitialBatch = async () => {
+      const promises: Promise<HTMLImageElement>[] = [];
+      for (let i = 0; i < INITIAL_BATCH_SIZE; i++) {
+        promises.push(
+          loadFrame(i).then((img) => {
+            initialLoadedCount++;
+            const progress = Math.round((initialLoadedCount / INITIAL_BATCH_SIZE) * 100);
+            setLoadingProgress(progress);
+            return img;
+          })
+        );
+      }
+
+      await Promise.all(promises);
+      imagesRef.current = loadedImages;
+      setIsLoaded(true);
+
+      // Start loading the rest of the frames in the background
+      loadRemainingFrames();
+    };
+
+    // Load remaining frames in batches of 6 to avoid choking the connection
+    const loadRemainingFrames = async () => {
+      const CONCURRENCY = 6;
+      for (let i = INITIAL_BATCH_SIZE; i < TOTAL_FRAMES; i += CONCURRENCY) {
+        const batch: Promise<HTMLImageElement>[] = [];
+        for (let j = 0; j < CONCURRENCY && i + j < TOTAL_FRAMES; j++) {
+          batch.push(loadFrame(i + j));
+        }
+        await Promise.all(batch);
+        // Update direct reference for high-performance canvas draw
+        imagesRef.current = [...loadedImages];
       }
     };
 
-    const handleImageError = () => {
-      // Still increment count so we don't get stuck if a frame fails
-      loadedCount++;
-      const progress = Math.round((loadedCount / TOTAL_FRAMES) * 100);
-      setLoadingProgress(progress);
-      if (loadedCount === TOTAL_FRAMES) {
-        imagesRef.current = images;
-        setIsLoaded(true);
-      }
-    };
-
-    for (let i = 1; i <= TOTAL_FRAMES; i++) {
-      const img = new Image();
-      img.src = `/frames/frame_${pad(i, 4)}.jpg`;
-      img.onload = handleImageLoad;
-      img.onerror = handleImageError;
-      images.push(img);
-    }
+    loadInitialBatch();
   }, []);
 
   // Set up canvas physical size based on CSS display size & Device Pixel Ratio
